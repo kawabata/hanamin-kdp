@@ -8,18 +8,31 @@ import psMat
 import os, re
 
 base=fontforge.open("./basefont.ttf.ivs")
-base.os2_width=1024
-base.fontname="HanaMinA"
-base.fullname="Hanazono Mincho A"
-base.hasvmetrics=True
-base.vhea_linegap=102
-
 mat1 = psMat.scale(1.05,1.05)
 mat2 = psMat.translate(-25,-25)
 
-def import_glyph (code, file, name):
+def make_font (name,fullname):
+    base=fontforge.open("./basefont.ttf.ivs")
+    base.os2_width=1024
+    base.fontname=name
+    base.fullname=fullname
+    base.hasvmetrics=True
+    base.vhea_linegap=102
+
+def resolve_name (name):
+    # 名前をシンボリックリンクを解決する。存在しない場合はNoneを返す。
+    file = "./work/"+name+".svg"
+    if not os.path.isfile(file):
+        print ("Warning! not exist-"+file)
+        return None
+    name = os.path.basename(os.path.realpath(file))[0:-4]
+    return name
+
+def import_glyph (code, name):
+    # 指定された文字コード、名前で文字をSVGから読み込む。
+    global dict
     glyph=base.createChar(code, name)
-    glyph.importOutlines(file, "removeoverlap")
+    glyph.importOutlines("./work/"+name+".svg", ("removeoverlap"))
     glyph.simplify()
     glyph.transform(mat1)
     glyph.transform(mat2)
@@ -29,18 +42,36 @@ def import_glyph (code, file, name):
     glyph.autoInstr()
     return glyph
 
-def file_name (file):
-    #ファイルから名前を生成する。
-    if re.search("work/(.+)\\.svg",file):
-        return re.group(1)
-    else:
-        error ("Something Wrong!")
-
+dict = {}
 tmp_code=0xf0000
-def import_tmp_glyph (file,name):
-    global tmp_code
-    glyph=import_glyph(tmp_code, file,name)
-    tmp_code=tmp_code+1
+def get_glyph (name):
+    # 名前のグリフを取得する。
+    # (1) 名前がすでに記録済みならば、それを返す。
+    # (2) 名前がuXXXX ならば、符号XXXX・名前uXXXXへimport_glyphする。
+    # (3) 参照先名が記録済みならばそれを返す。
+    # (4) 参照先名がuYYYYならば、符号YYYY・名前uYYYYへimport_glyphする。
+    # (5) それ以外ならば、符号tmp_codez名前を参照先名へimport_glyphする。
+    global tmp_code, dict
+    if dict.has_key(name):
+        return dict[name]
+    reobj=re.match("^u([0-9a-f]+)$",name)
+    if reobj != None:
+        code=int(reobj.group(1),16)
+        glyph=import_glyph(code,name)
+        dict[name]=glyph
+        return glyph
+    rname = resolve_name (name)
+    if dict.has_key(rname):
+        return dict[rname]
+    reobj=re.match("^u([0-9a-f]+)$",rname)
+    if reobj != None:
+        code=int(reobj.group(1),16)
+    else:
+        code=tmp_code
+        tmp_code=tmp_code+1
+        print("get_glyph/tmp",code,name,rname)
+    glyph=import_glyph(code,rname)
+    dict[rname]=glyph
     return glyph
 
 # main function
@@ -64,8 +95,7 @@ def make_base (reg):
         m=reobj.match(file)
         if (m):
             name = m.group(1)
-            code = int(m.group(2),16)
-            import_glyph(code,"./work/"+file,name)
+            get_glyph(name)
 
 ## IVS
 def make_ivs (reg):
@@ -76,7 +106,7 @@ def make_ivs (reg):
             name  = m.group(1)
             code  = int(m.group(2),16)
             vs    = int(m.group(3),16)
-            glyph = import_tmp_glyph("./work/"+file,name)
+            glyph = get_glyph(name)
             altuni= base[code].altuni
             if altuni == None:
                 base[code].altuni = ((glyph.unicode,vs,0),)
@@ -100,15 +130,16 @@ def make_gtjk (reg):
             name  = m.group(1)
             nameX = m.group(2)
             region= m.group(3)
-            glyph = import_tmp_glyph("./work/"+file,name)
+            glyph = get_glyph(name)
+            glyphX= get_glyph(nameX)
             if region == "g":
-                base[nameX].addPosSub("zhcn1",name)
+                glyphX.addPosSub("zhcn1",glyph.glyphname)
             elif region == "t":
-                base[nameX].addPosSub("zhtw1",name)
+                glyphX.addPosSub("zhtw1",glyph.glyphname)
             elif region == "j":
-                base[nameX].addPosSub("jajp1",name)
+                glyphX.addPosSub("jajp1",glyph.glyphname)
             elif region == "k":
-                base[nameX].addPosSub("kokr1",name)
+                glyphX.addPosSub("kokr1",glyph.glyphname)
             else:
                 print ("region not found")
 
@@ -122,8 +153,9 @@ def make_vert (reg):
         if (m):
             name  = m.group(1)
             nameX = m.group(2)
-            glyph = import_tmp_glyph("./work/"+file,name)
-            base[nameX].addPosSub("vert1",name)
+            glyph = get_glyph(name)
+            glyphX= get_glyph(nameX)
+            base[nameX].addPosSub("vert1",glyph.glyphname)
 
 def make_ssXX (reg):
     reobj=re.compile(reg)
@@ -140,8 +172,9 @@ def make_ssXX (reg):
             name  = m.group(1)
             nameX = m.group(2)
             style = m.group(3)
-            glyph = import_tmp_glyph("./work/"+file,name)
-            base[nameX].addPosSub("ss"+style+"1",name)
+            glyph = get_glyph(name)
+            glyphX= get_glyph(nameX)
+            glyphX.addPosSub("ss"+style+"1",glyph.glyphname)
 
 ## salt
 def make_salt (reg):
@@ -156,11 +189,12 @@ def make_salt (reg):
             name   = m.group(1)
             nameX  = m.group(2)
             variant= int(m.group(3))
-            glyph  = import_tmp_glyph("./work/"+file,name)
+            glyph  = get_glyph(name)
+            glyphX = get_glyph(nameX)
             try:
-                dict[nameX][variant]=name
+                dict[glyphX.glyphname][variant]=glyph.glyphname
             except KeyError:
-                dict[nameX] = {variant: name}
+                dict[glyphX.glyphname] = {variant: glyph.glyphname}
                 
     for key in dict.keys():
         print ("variants:",dict[key].values())
@@ -179,11 +213,12 @@ def make_aalt (reg):
             name   = m.group(1)
             nameX  = m.group(2)
             variant= int(m.group(3))
-            glyph  = import_tmp_glyph("./work/"+file,name)
+            glyph  = get_glyph(name)
+            glyphX = get_glyph(nameX)
             try:
-                dict[nameX][variant]=name
+                dict[glyphX.glyphname][variant]=glyph.glyphname
             except KeyError:
-                dict[nameX] = {variant: name}
+                dict[glyphX.glyphname] = {variant: glyph.glyphname}
     
     for key in dict.keys():
         print ("itaiji:",dict[key].values())
@@ -199,21 +234,26 @@ def make_liga (reg):
         m=reobj.match(file)
         if (m):
             name   = m.group(1)
-            nameX  = m.group(2)
-            ids    = tuple(name.split("-"))
+            glyph  = get_glyph(name)
+            ids    = tuple(map ((lambda x: get_glyph(x).glyphname), name.split("-")))
             print ("liga",ids)
-            base[nameX].addPosSub("liga1",ids)
+            glyph.addPosSub("liga1",ids)
 
 def make_font_debug ():
-    make_base("^(u([23][0f][0-9a-f]{2}))\\.svg$") # debug
-    make_ivs ( "^(u([3][0f][0-9a-f]{2})-u(e01[01][0-9a-f]))\\.svg$")
-    make_gtjk( "^((u[3][0f][0-9a-f]{2})-([gtkj]))\\.svg$")
-    make_vert( "^((u[3][0f][0-9a-f]{2})-vert)\\.svg$")
-    make_ssXX( "^((u[3][0f][0-9a-f]{2})-([01][0-9]))\\.svg$")
-    make_salt( "^((u[3][0f][0-9a-f]{2})-var-([0-9]{3}))\\.svg$")
-    make_aalt( "^((u[3][0f][0-9a-f]{2})-itaiji-([0-9]{3}))\\.svg$")
+    make_font("HanaMinTest", "Hanazono Mincho Test")
+    make_base("^(u([235][0f][0-9a-f]{2}))\\.svg$") # debug
+    make_ivs ( "^(u([35][0f][0-9a-f]{2})-u(e01[01][0-9a-f]))\\.svg$")
+    make_gtjk( "^((u[35][0f][0-9a-f]{2})-([gtkj]))\\.svg$")
+    make_vert( "^((u[35][0f][0-9a-f]{2})-vert)\\.svg$")
+    make_ssXX( "^((u[35][0f][0-9a-f]{2})-([01][0-9]))\\.svg$")
+    make_salt( "^((u[35][0f][0-9a-f]{2})-var-([0-9]{3}))\\.svg$")
+    make_aalt( "^((u[35][0f][0-9a-f]{2})-itaiji-([0-9]{3}))\\.svg$")
+    make_liga("^((u2ff[0-b])(-u[0-9a-f]{4,5})+)\\.svg$")
+    print("Generate HanaMinDebug.ttf.")
+    base.generate("HanaMinDebug.ttf",flags=("opentype","no-hints","round"))
 
 def make_font_a ():
+    make_font("HanaMinA", "Hanazono Mincho A")
     make_base("^(u([2-9f][0-9a-f]{3}))\\.svg$")
     make_ivs ("^(u([2-9f][0-9a-f]{3})-u(e01[01][0-9a-f]))\\.svg$")
     make_gtjk("^((u[2-9f][0-9a-f]{3})-([gtkj]))\\.svg$")
@@ -221,13 +261,25 @@ def make_font_a ():
     make_ssXX("^((u[2-9f][0-9a-f]{3})-([01][0-9]))\\.svg$")
     make_salt("^((u[2-9f][0-9a-f]{3})-var-([0-9]{3}))\\.svg$")
     make_aalt("^((u[2-9f][0-9a-f]{3})-itaiji-([0-9]{3}))\\.svg$")
-    make_liga("^((u2ff[0-b])(-u[0-9a-f]{4})+)\\.svg$")
+    make_liga("^((u2ff[0-b])(-u[0-9a-f]{4,5})+)\\.svg$")
+    print("Generate HanaMinA.ttf file.")
+    base.generate("HanaMinA.ttf",flags=("opentype","no-hints","round"))
 
-# make_font_a()
-make_font_debug()
-print("Generate .ttf file.")
-base.generate("HanaMinA.ttf",flags=("opentype","no-hints","round"))
+def make_font_b ():
+    make_font("HanaMinB", "Hanazono Mincho B")
+    make_base("^(u([12][0-9a-f]{4}))\\.svg$")
+    make_ivs ("^(u([12][0-9a-f]{4})-u(e01[01][0-9a-f]))\\.svg$")
+    make_gtjk("^((u[12][0-9a-f]{4})-([gtkj]))\\.svg$")
+    make_vert("^((u[12][0-9a-f]{4})-vert)\\.svg$")
+    make_ssXX("^((u[12][0-9a-f]{4})-([01][0-9]))\\.svg$")
+    make_salt("^((u[12][0-9a-f]{4})-var-([0-9]{3}))\\.svg$")
+    make_aalt("^((u[12][0-9a-f]{4})-itaiji-([0-9]{3}))\\.svg$")
+    print("Generate HanaMinB.ttf file.")
+    base.generate("HanaMinB.ttf",flags=("opentype","no-hints","round"))
 
+#make_font_debug()
+#make_font_a()
+make_font_b()
 # TODO:
 # 横書き漢文句読点重ねあわせ機能
 # 縦書き漢文句読点重ねあわせ機能
