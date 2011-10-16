@@ -11,12 +11,12 @@ import sys, os, re, fnmatch, codecs
 
 mat1 = psMat.scale(1.05,1.05)
 mat2 = psMat.translate(-25,-25)
-aalt = {} # add_aalt で異体字を入れる。文字溢れがおきないよう、数は抑制する。
+aalt = {} # add_aalt で異体字を入れる。溢れないよう、数は抑制する。
 vari_dir = '/home/kawabata/Dropbox/cvs/kanji-database/variants/'
 
 def make_font (name,style,version):
     global aalt
-    font=fontforge.open("./basefont.ttf.ivs")
+    font=fontforge.open("./basefont.ttf")
     font.os2_width=1024
     aalt = {}
     # バージョン番号。
@@ -47,32 +47,14 @@ def make_font (name,style,version):
                        (0x411, 2,"Regular"),
                        # (0x411, 4,name+"-Regular"), # もしHanaMinBが認識されなくなったらこれをコメントアウトしてみる。
                        (0x411, 5,"Version "+version+" （KDP 実験版）"),
+                       (0x409, 9,"上地宏一・川幡太一・その他、GlyphWikiにグリフを投稿して頂いた方々。"),
                        (0x411,14,"http://glyphwiki.org/wiki/GlyphWiki:%E3%83%87%E3%83%BC%E3%82%BF%E3%83%BB%E8%A8%98%E4%BA%8B%E3%81%AE%E3%83%A9%E3%82%A4%E3%82%BB%E3%83%B3%E3%82%B9"),
                        (0x411,16,"花園明朝"),
                        (0x411,17,style))
-    #font.os2_unicoderanges = (  0*268435456+  0*16777216+  0*1048576+  0*65536+  0*4096+  2*256+ 13*16+  7,
-    #                            2*268435456+ 10*16777216+ 12*1048576+  7*65536+  1*4096+  6*256+  1*16+  1,
-    #                            0*268435456+  0*16777216+  0*1048576+  0*65536+  0*4096+  0*256+  1*16+  2,
-    #                            0*268435456+  0*16777216+  0*1048576+  0*65536+  0*4096+  0*256+  0*16+  0)
-    #font.os2_codepages     = (  2*268435456+  0*16777216+  0*1048576+  2*65536+  0*4096+  0*256+  9*16+ 15,
-    #                            0*268435456+  0*16777216+  0*1048576+  0*65536+  0*4096+  0*256+  0*16+  0)
-    #font.horizontalBaseline = (("icfb", "icft", "ideo", "romn"),
-    #                           (("DFLT", "icfb", (-120,),()),
-    #                            ("DFLT", "icft", (-856,),()),
-    #                            ("DFLT", "ideo", (-144,),()),
-    #                            ("DFLT", "romn", (-0,),())))
-    #font.horizontalBaseline  = (('ideo', 'romn'),
-    #                            (('DFLT', 'romn', (-144, 0), ()),
-    #                             ('DFLT', 'icfb', (-122, 0), ()),
-    #                             ('DFLT', 'ideo', (0,  144), ()),
-    #                             ('DFLT', 'romn', (-144, 0), ())))
-    #font.verticalBaseline = (("icfb", "icft", "ideo", "romn"),
-    #                           (("DFLT", "icfb", (24,),()),
-    #                            ("DFLT", "icft", (1000,),()),
-    #                            ("DFLT", "ideo", (0,),()),
-    #                            ("DFLT", "romn", (144,),())))
     font.hasvmetrics=True
     font.vhea_linegap=102
+    font.hhea_linegap=102
+    # font.cvt=(0,0)
     return font
 
 def add_aalt (glyphB, glyph):
@@ -104,17 +86,21 @@ def import_glyph (font, code, name):
     glyph=font.createChar(code, name)
     file ="./work/"+name+".svg"
     if os.path.exists(file):
-        glyph.importOutlines(file, ("toobigwarn", "removeoverlap",))
+        glyph.importOutlines(file, ("toobigwarn", "removeoverlap"))
+        glyph.removeOverlap()
+        glyph.simplify(1,("ignoreslopes","ignoreextrema","smoothcurves",
+                          "choosehv","nearlyhvlines","mergelines", "forcelines",
+                          "setstarttoextremum","removesingletonpoints"))
+        glyph.round()
+        # glyph.autoHint()
+        glyph.autoInstr()
     else:
         print ("Warning! "+file+" does not exist!")
     glyph_count+=1
-    glyph.simplify()
     glyph.transform(mat1)
     glyph.transform(mat2)
     glyph.width=1024
     glyph.vwidth=1024
-    glyph.round()
-    glyph.autoInstr()
     return glyph
 
 dict = {} # 文字名→glyph の辞書データ。エイリアスもあり。
@@ -223,14 +209,17 @@ def make_ivs (font, reg):
             vs    = int(m.group(3),16)
             glyph = get_glyph(font, name)
             glyphB= get_glyph(font, base)
-            altuni= glyphB.altuni
+            #altuni= glyphB.altuni
+            altuni= glyph.altuni
             if (glyphB.unicode > 0x2d000):
                 print ("Error! irregular IVS!", glyphB.glyphname)
                 exit()
             if altuni == None:
-                glyphB.altuni = ((glyph.unicode,vs,0),)
+                #glyphB.altuni = ((glyph.unicode,vs,0),)
+                glyph.altuni = ((glyphB.unicode,vs,0),)
             else:
-                glyphB.altuni = altuni+((glyph.unicode,vs,0),)
+                #glyphB.altuni = altuni+((glyph.unicode,vs,0),)
+                glyph.altuni = altuni+((glyphB.unicode,vs,0),)
             add_posSub(glyphB, ("cv%02d1" % (vs-0xe0100+17,)), glyph.glyphname)
             add_aalt(glyphB,glyph)
     print ("ivs/cvXX: total=%d" % (count,))
@@ -431,10 +420,10 @@ def make_liga (font, reg):
     print ("liga: total=%d" % (count,))
 
 # 異体字データベースから異体字情報を取り込む。
-def make_variants(font,regex1,regex2):
+def make_variants(font,regex1,regex2,regex3):
     global vari_dir
-    reobj1 = re.compile(u"^("+regex1+u"),[^,]+,("+regex2+u")", re.UNICODE)
-    reobj2 = re.compile(u"^("+regex2+u"),[^,]+,("+regex1+u")", re.UNICODE)
+    reobj1 = re.compile(u"^("+regex1+u"),"+regex3+u",("+regex2+u")", re.UNICODE)
+    reobj2 = re.compile(u"^("+regex2+u"),"+regex3+u",("+regex1+u")", re.UNICODE)
     for file in os.listdir(vari_dir):
         file = vari_dir+file
         if not (fnmatch.fnmatch(file,"*.txt")):
@@ -483,23 +472,27 @@ def make_aalt(font):
 def fini_font (font,file_name):
     print("total import glyph=%d" % (glyph_count,))
     print("Generating "+file_name+"....")
+    font.ascent=880
+    font.descent=144
     font.generate(file_name, flags=("opentype","no-hints","round"))
     print("...finished.")
+    print("Generating "+file_name+".sfd ....")
+    font.generate(file_name+".sfd")
     font.close
 
 def make_font_test (version):
     font=make_font("HanaMinTest", "Test", version)
-    make_base(font, "^(u[23][0f][0-9a-f]{2})\\.svg$") # debug
+    make_base(font, "^(u[234][0f][0-9a-f]{2})\\.svg$") # debug
     #make_cdp (font)
-    #make_ivs (font, "^((u[3][0f][0-9a-f]{2})-u(e011[0-9a-f]))\\.svg$")
+    make_ivs (font, "^((u[34][0f][0-9a-f]{2})-u(e01[01][0-9a-f]))\\.svg$")
     #make_gtjk(font, "^((u[3][0f][0-9a-f]{2})-([gtkj]))\\.svg$")
     #make_vert(font, "^((u[3][0f][0-9a-f]{2})-vert)\\.svg$")
     #make_ssXX(font, "^((u[3][0f][0-9a-f]{2})-([01][0-9]))\\.svg$")
     #make_salt(font, "^((u[3][0f][0-9a-f]{2})-var-([0-9]{3}))\\.svg$")
     #make_trad(font, "^((u[3][0f][0-9a-f]{2})-itaiji-([0-9]{3}))\\.svg$")
-    make_ccmp(font, "^((?:kumimoji-)?((u2ff[0-b])(-u[0-9a-f]{4,5})+))\\.svg$")
-    make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
-    make_variants(font, u"[㐀-㔀]", u"[㐀-㔀]")
+    #make_ccmp(font, "^((?:kumimoji-)?((u2ff[0-b])(-u[0-9a-f]{4,5})+))\\.svg$")
+    #make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
+    make_variants(font, u"[㐀-㔀]", u"[㐀-㔀]",u".*?simplified.*?")
     make_aalt(font)
     fini_font(font,"HanaMinTest.ttf")
 
@@ -515,8 +508,10 @@ def make_font_a (version):
     make_trad(font,"^((u[2-9f][0-9a-f]{3})-itaiji-([0-9]{3}))\\.svg$")
     make_ccmp(font,"^((?:kumimoji-)?((u2ff[0-b])(-u[0-9a-f]{4,5})+))\\.svg$")
     make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
-    # make_variants(font, u"[一-﫿]", u"[一-﫿]")
-    # make_variants(font, u"[一-﫿]", u"[㐀-﫿𠀀-𯿽]")
+    #make_variants(font, u"[一-﫿]", u"[一-﫿]",u".*?simplified.*?")
+    make_variants(font, u"[一-﫿]", u"[一-﫿]",u".*?jisx.*?") # これだけならOK。
+    #make_variants(font, u"[一-﫿]", u"[一-﫿]",u"[^,]+")
+    #make_variants(font, u"[一-﫿]", u"[㐀-﫿𠀀-𯿽]",u"[^,]+")
     make_aalt(font)
     fini_font(font,"HanaMinA.ttf")
 
@@ -533,7 +528,8 @@ def make_font_b (version):
     make_ssXX(font,"^((u2[0-9a-f]{4})-([01][0-9]))\\.svg$")
     make_salt(font,"^((u2[0-9a-f]{4})-var-([0-9]{3}))\\.svg$")
     make_trad(font,"^((u2[0-9a-f]{4})-itaiji-([0-9]{3}))\\.svg$")
-    make_variants(font, u"[㐀-䷿𠀀-𯿽]", u"[㐀-䷿𠀀-𯿽]")
+    make_variants(font, u"[一-﫿]", u"[㐀-䷿𠀀-𯿽]",u".*?simplified.*?")
+    make_variants(font, u"[一-﫿]", u"[㐀-䷿𠀀-𯿽]",u".*?jisx.*?")
     make_aalt(font)
     fini_font(font,"HanaMinB.ttf")
 
