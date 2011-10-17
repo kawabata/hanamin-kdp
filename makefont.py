@@ -5,7 +5,7 @@
 # 注意！ UCS4オプションでコンパイルしたPythonを使うこと！
 # 確認方法： ord(u'𠀀’) がちゃんと#x20000 になるかどうか。
 
-import fontforge                                 #Load the module
+import fontforge
 import psMat
 import sys, os, re, fnmatch, codecs
 
@@ -19,9 +19,6 @@ def make_font (name,style,version):
     font=fontforge.open("./basefont.ttf")
     font.os2_width=1024
     aalt = {}
-    # バージョン番号。
-    # 上一桁＝（年号-2010）。
-    # 下４桁＝ もとデータ（dump.tar.gz）の取得日。下２桁＝フォント生成差分日。
     font.sfntRevision = float(version)
     fullname_en="Hanazono Mincho "+style
     fullname_ja="花園明朝 "+style
@@ -54,7 +51,7 @@ def make_font (name,style,version):
     font.hasvmetrics=True
     font.vhea_linegap=102
     font.hhea_linegap=102
-    # font.cvt=(0,0)
+    font.cvt=(0,0)
     return font
 
 def add_aalt (glyphB, glyph):
@@ -88,11 +85,12 @@ def import_glyph (font, code, name):
     if os.path.exists(file):
         glyph.importOutlines(file, ("toobigwarn", "removeoverlap"))
         glyph.removeOverlap()
-        glyph.simplify(1,("ignoreslopes","ignoreextrema","smoothcurves",
+        # 注意！この値が2以下だとfontforgeは暴走します。
+        glyph.simplify(2,("ignoreslopes","ignoreextrema","smoothcurves",
                           "choosehv","nearlyhvlines","mergelines", "forcelines",
                           "setstarttoextremum","removesingletonpoints"))
         glyph.round()
-        # glyph.autoHint()
+        # glyph.autoHint() # ヒント情報を入れると低解像度で暴走する。
         glyph.autoInstr()
     else:
         print ("Warning! "+file+" does not exist!")
@@ -134,19 +132,7 @@ def get_glyph (font, name):
     dict[rname]=glyph
     return glyph
 
-# main function
-
-# 優先度
-# uXXXX
-# uXXXX-ue0XXX
-# uXXXX-{gtk}
-# uXXXX-u3099 (ligature)
-# uXXXX-u309a (ligature)
-# uXXXX-XX (ssXX)
-# [XXXX]-vert
-# [XXXX]-itaiji-00X
-# [XXXX]-var-00X
-# u2ff[0-b]-uxxxxx-uxxxxx- IDS
+# main functions
 
 # u[3-9f]xxx のグリフのフォント生成
 def make_base (font, reg):
@@ -231,8 +217,6 @@ def make_gtjk (font,reg):
     count_t = 0
     count_j = 0
     count_k = 0
-    #font.addLookup("zhtw","gsub_single",(),(("zhtw",(("DFLT",("dflt")),("hani",("dflt")),("kana",("dflt")))),))
-    #                                        # ("locl",(("hani",("ZHT ")),))))
     font.addLookup("zhcn","gsub_single",(),(("zhcn",(("DFLT",("dflt")),("hani",("dflt")),("kana",("dflt")),
                                                      ("DFLT",("JAN ")),("hani",("JAN ")),("kana",("JAN ")),
                                                      ("DFLT",("ZHS ")),("hani",("ZHS ")),("kana",("ZHS ")),
@@ -485,11 +469,11 @@ def make_font_test (version):
     make_base(font, "^(u[234][0f][0-9a-f]{2})\\.svg$") # debug
     #make_cdp (font)
     make_ivs (font, "^((u[34][0f][0-9a-f]{2})-u(e01[01][0-9a-f]))\\.svg$")
-    #make_gtjk(font, "^((u[3][0f][0-9a-f]{2})-([gtkj]))\\.svg$")
-    #make_vert(font, "^((u[3][0f][0-9a-f]{2})-vert)\\.svg$")
-    #make_ssXX(font, "^((u[3][0f][0-9a-f]{2})-([01][0-9]))\\.svg$")
-    #make_salt(font, "^((u[3][0f][0-9a-f]{2})-var-([0-9]{3}))\\.svg$")
-    #make_trad(font, "^((u[3][0f][0-9a-f]{2})-itaiji-([0-9]{3}))\\.svg$")
+    #make_gtjk(font, "^((u[34][0f][0-9a-f]{2})-([gtkj]))\\.svg$")
+    #make_vert(font, "^((u[34][0f][0-9a-f]{2})-vert)\\.svg$")
+    make_ssXX(font, "^((u[34][0f][0-9a-f]{2})-([01][0-9]))\\.svg$")
+    #make_salt(font, "^((u[34][0f][0-9a-f]{2})-var-([0-9]{3}))\\.svg$")
+    #make_trad(font, "^((u[34][0f][0-9a-f]{2})-itaiji-([0-9]{3}))\\.svg$")
     #make_ccmp(font, "^((?:kumimoji-)?((u2ff[0-b])(-u[0-9a-f]{4,5})+))\\.svg$")
     #make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
     make_variants(font, u"[㐀-㔀]", u"[㐀-㔀]",u".*?simplified.*?")
@@ -501,15 +485,16 @@ def make_font_a (version):
     make_base(font,"^((u[0-9a-f][0-9a-f]{3}))\\.svg$")
     make_cdp (font)
     make_ivs (font,"^((u[2-9f][0-9a-f]{3})-u(e01[01][0-9a-f]))\\.svg$")
-    make_gtjk(font,"^((u[2-9f][0-9a-f]{3})-([gtk]))\\.svg$")
+    make_gtjk(font,"^((u[2-9f][0-9a-f]{3})-([gtjk]))\\.svg$")
     make_vert(font,"^((u[2-9f][0-9a-f]{3})-vert)\\.svg$")
     make_ssXX(font,"^((u[2-9f][0-9a-f]{3})-([01][0-9]))\\.svg$")
     make_salt(font,"^((u[2-9f][0-9a-f]{3})-var-([0-9]{3}))\\.svg$")
     make_trad(font,"^((u[2-9f][0-9a-f]{3})-itaiji-([0-9]{3}))\\.svg$")
     make_ccmp(font,"^((?:kumimoji-)?((u2ff[0-b])(-u[0-9a-f]{4,5})+))\\.svg$")
     make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
+    # aaltが２万を越えるとfontforgeが異常動作するため、当面はJIS異体字のみサポート。
+    make_variants(font, u"[一-﫿]", u"[㐀-﫿𠀀-𯿽]",u".*?jisx.*?") # これだけならOK。
     #make_variants(font, u"[一-﫿]", u"[一-﫿]",u".*?simplified.*?")
-    make_variants(font, u"[一-﫿]", u"[一-﫿]",u".*?jisx.*?") # これだけならOK。
     #make_variants(font, u"[一-﫿]", u"[一-﫿]",u"[^,]+")
     #make_variants(font, u"[一-﫿]", u"[㐀-﫿𠀀-𯿽]",u"[^,]+")
     make_aalt(font)

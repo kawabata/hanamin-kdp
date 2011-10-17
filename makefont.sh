@@ -1,9 +1,13 @@
 #/bin/bash -x
 version=1.`date "+%m%d"`1
-echo "creating version "$version
-cd /home/kawabata/Resources/GlyphWiki/dump/
+# = X.YYYYZ
+# X    = year-2010
+# YYYY = date of font build. 
+# Z(1) = aux number.
 
+echo "creating version "$version
 echo "Removing various data...."
+
 /bin/rm -rf ./work
 /bin/rm -rf ./ttx
 /bin/rm dump.tar.gz
@@ -17,7 +21,7 @@ echo "Downloading data..."
 wget http://glyphwiki.org/dump.tar.gz
 tar xvfz dump.tar.gz
 
-echo "Creating data.."
+echo "Creating SVG.."
 # java -jar /usr/share/java/rhino.jar makesvg.js dump_newest_only.txt > log.j.txt
 rhino makesvg.js dump_newest_only.txt > log.j.txt
 emacs --script glyphwiki-symlink.el
