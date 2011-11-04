@@ -25,6 +25,10 @@ echo "Creating SVG.."
 # java -jar /usr/share/java/rhino.jar makesvg.js dump_newest_only.txt > log.j.txt
 rhino makesvg.js dump_newest_only.txt > log.j.txt
 emacs --script glyphwiki-symlink.el
+# 漢文に対して、vertファイルを作成する。
+for file in ./work/u319*.svg; do
+cp  $file `dirname $file`/`basename $file .svg`-vert.svg
+done
 
 echo "Creating fonts.."
 python makefont.py A $version > log.A.txt

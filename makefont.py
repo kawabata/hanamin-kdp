@@ -11,6 +11,8 @@ import sys, os, re, fnmatch, codecs
 
 mat1 = psMat.scale(1.05,1.05)
 mat2 = psMat.translate(-25,-25)
+mat3 = psMat.translate(-256,0)
+mat4 = psMat.scale(1.0, 2.0)
 aalt = {} # add_aalt で異体字を入れる。溢れないよう、数は抑制する。
 vari_dir = '/home/kawabata/Dropbox/cvs/kanji-database/variants/'
 
@@ -59,9 +61,8 @@ def add_aalt (glyphB, glyph):
     base = glyphB.glyphname
     name = glyph.glyphname
     if (glyphB.unicode > 0x30000):
-        print ("add_aalt error!")
-        exit()
-    if base != name:
+        print ("add_aalt error! base="+base+", name="+name+", this pair is ignored.")
+    elif base != name:
         if aalt.has_key(base):
             aalt[base].append(name)
         else:
@@ -86,11 +87,11 @@ def import_glyph (font, code, name):
         glyph.importOutlines(file, ("toobigwarn", "removeoverlap"))
         glyph.removeOverlap()
         # 注意！この値が2以下だとfontforgeは暴走します。
-        glyph.simplify(2,("ignoreslopes","ignoreextrema","smoothcurves",
-                          "choosehv","nearlyhvlines","mergelines", "forcelines",
+        glyph.simplify(2,("ignoreextrema","smoothcurves", #"ignoreslopes",
+                          "mergelines", "forcelines", #"nearlyhvlines", "choosehv",
                           "setstarttoextremum","removesingletonpoints"))
         glyph.round()
-        # glyph.autoHint() # ヒント情報を入れると低解像度で暴走する。
+        # glyph.autoHint() # ヒント情報を入れると低解像度で文字崩れが起こるので中止。
         glyph.autoInstr()
     else:
         print ("Warning! "+file+" does not exist!")
@@ -147,20 +148,30 @@ def make_base (font, reg):
             get_glyph(font, base)
     print ("base: total=%d" % (count,))
 
+lookup_tables = {}
 def add_lookup(font, feat, type):
-    font.addLookup(feat, type, (), ((feat, (("DFLT",("dflt")),("hani",("dflt")),("kana",("dflt")),
-                                            ("DFLT",("JAN ")),("hani",("JAN ")),("kana",("JAN ")),
-                                            ("DFLT",("ZHS ")),("hani",("ZHS ")),("kana",("ZHS ")),
-                                            ("DFLT",("ZHT ")),("hani",("ZHT ")),("kana",("ZHT ")),
-                                            ("DFLT",("KOR ")),("hani",("KOR ")),("kana",("KOR ")))),))
-                                 #(("zhcn",(("DFLT",("dflt")),("hani",("dflt")),("kana",("dflt")))),))
-    font.addLookupSubtable(feat,feat+"1")
+    global lookup_tables
+    if not (lookup_tables.has_key(feat)):
+        font.addLookup(feat, type, (), ((feat, (("DFLT",("dflt")),("hani",("dflt")),("kana",("dflt")),
+                                                ("DFLT",("JAN ")),("hani",("JAN ")),("kana",("JAN ")),
+                                                ("DFLT",("ZHS ")),("hani",("ZHS ")),("kana",("ZHS ")),
+                                                ("DFLT",("ZHT ")),("hani",("ZHT ")),("kana",("ZHT ")),
+                                                ("DFLT",("KOR ")),("hani",("KOR ")),("kana",("KOR ")))),))
+                                     #(("zhcn",(("DFLT",("dflt")),("hani",("dflt")),("kana",("dflt")))),))
+        font.addLookupSubtable(feat,feat+"1")
+        lookup_tables[feat]=True
+        print (feat+"1 subtable created.")
+    else:
+        print (feat+" table is already created.")
     
-    print (feat+"1 subtable created.")
 
 def add_posSub(glyph, feat, val):
     print (glyph.glyphname, feat, val)
     glyph.addPosSub(feat, val)
+
+def add_posSub2(glyph, feat, val, kern):
+    print (glyph.glyphname, feat, val, kern)
+    glyph.addPosSub(feat, val, kern)
 
 def make_cdp (font):
     # CDPすべての文字をPUAにインポートする。
@@ -195,16 +206,13 @@ def make_ivs (font, reg):
             vs    = int(m.group(3),16)
             glyph = get_glyph(font, name)
             glyphB= get_glyph(font, base)
-            #altuni= glyphB.altuni
             altuni= glyph.altuni
             if (glyphB.unicode > 0x2d000):
                 print ("Error! irregular IVS!", glyphB.glyphname)
                 exit()
             if altuni == None:
-                #glyphB.altuni = ((glyph.unicode,vs,0),)
                 glyph.altuni = ((glyphB.unicode,vs,0),)
             else:
-                #glyphB.altuni = altuni+((glyph.unicode,vs,0),)
                 glyph.altuni = altuni+((glyphB.unicode,vs,0),)
             add_posSub(glyphB, ("cv%02d1" % (vs-0xe0100+17,)), glyph.glyphname)
             add_aalt(glyphB,glyph)
@@ -278,6 +286,7 @@ def make_gtjk (font,reg):
 def make_vert (font, reg):
     reobj = re.compile(reg)
     count = 0
+    print("vert")
     add_lookup(font, "vert","gsub_single")
     for file in os.listdir('./work/'):
         m=reobj.match(file)
@@ -388,6 +397,7 @@ def make_ccmp (font, reg):
             add_posSub(glyph, "ccmp1",ids)
     print ("ccmp: total=%d" % (count,))
 
+# 普通のリガチャ (-) で区切られる。
 def make_liga (font, reg):
     print("liga")
     reobj = re.compile(reg)
@@ -402,6 +412,85 @@ def make_liga (font, reg):
             ids    = tuple(map ((lambda x: get_glyph(font, x).glyphname), name.split("-")))
             add_posSub(glyph, "liga1",ids)
     print ("liga: total=%d" % (count,))
+
+# 指定した文字の幅を半分にする。主に漢文の返り点などでの利用を想定。
+def make_half_h (font, reg):
+    print("half_h")
+    reobj = re.compile(reg)
+    count = 0
+    for file in os.listdir('./work/'):
+        m=reobj.match(file)
+        if (m):
+            count += 1
+            name   = m.group(1)
+            glyph  = get_glyph(font, name)
+            glyph.width = glyph.width/2
+    print ("half_h: total=%d" % (count,))
+
+# 指定した文字の高さを半分にする。主に漢文の返り点などでの利用を想定。
+def make_half_v (font, reg):
+    print("half_v")
+    reobj = re.compile(reg)
+    count = 0
+    for file in os.listdir('./work/'):
+        m=reobj.match(file)
+        if (m):
+            count += 1
+            name   = m.group(1)
+            glyph  = get_glyph(font, name)
+            glyph.vwidth = glyph.vwidth/2
+    print ("half_v: total=%d" % (count,))
+
+# 指定した文字を半角にする。
+def make_hankaku (font, reg):
+    print("hankaku")
+    reobj = re.compile(reg)
+    count = 0
+    for file in os.listdir('./work/'):
+        m=reobj.match(file)
+        if (m):
+            count += 1
+            name   = m.group(1)
+            glyph  = get_glyph(font, name)
+            glyph.transform(mat3) 
+            glyph.width = 512
+    print ("hankaku: total=%d" % (count,))
+
+# 指定した文字の縦長さを２倍にする。
+def make_double (font, reg):
+    print("double")
+    reobj = re.compile(reg)
+    count = 0
+    for file in os.listdir('./work/'):
+        m=reobj.match(file)
+        if (m):
+            count += 1
+            name   = m.group(1)
+            glyph  = get_glyph(font, name)
+            glyph.transform(mat4)
+    print ("double: total=%d" % (count,))
+
+# 縦書きカーニングを入れる。
+# 現在は漢文＋句読点を想定。
+def make_vkrn (font, reg1, reg2, vkrn):
+    print("vkrn")
+    reobj1 = re.compile(reg1)
+    reobj2 = re.compile(reg2)
+    count = 0
+    add_lookup(font, "vkrn", "gpos_pair")
+    for file1 in os.listdir('./work/'):
+        m1=reobj1.match(file1)
+        if (m1):
+            for file2 in os.listdir('./work/'):
+                m2=reobj2.match(file2)
+                if (m2):
+                    count += 1
+                    name1  = m1.group(1)
+                    name2  = m2.group(1)
+                    glyph1 = get_glyph(font, name1)
+                    glyph2 = get_glyph(font, name2)
+                    add_posSub2(glyph1, "vkrn1", glyph2.glyphname, vkrn)
+    print ("vkrn: total=%d" % (count,))
 
 # 異体字データベースから異体字情報を取り込む。
 def make_variants(font,regex1,regex2,regex3):
@@ -460,22 +549,29 @@ def fini_font (font,file_name):
     font.descent=144
     font.generate(file_name, flags=("opentype","no-hints","round"))
     print("...finished.")
-    print("Generating "+file_name+".sfd ....")
-    font.generate(file_name+".sfd")
+    #print("Generating "+file_name+".sfd ....")
+    #font.generate(file_name+".sfd")
     font.close
 
 def make_font_test (version):
     font=make_font("HanaMinTest", "Test", version)
-    make_base(font, "^(u[234][0f][0-9a-f]{2})\\.svg$") # debug
+    make_base(font, "^(u[23][01f][0-9a-f]{2})\\.svg$") # debug
     #make_cdp (font)
-    make_ivs (font, "^((u[34][0f][0-9a-f]{2})-u(e01[01][0-9a-f]))\\.svg$")
+    make_ivs (font, "^((u[3][01f][0-9a-f]{2})-u(e01[01][0-9a-f]))\\.svg$")
     #make_gtjk(font, "^((u[34][0f][0-9a-f]{2})-([gtkj]))\\.svg$")
-    #make_vert(font, "^((u[34][0f][0-9a-f]{2})-vert)\\.svg$")
-    make_ssXX(font, "^((u[34][0f][0-9a-f]{2})-([01][0-9]))\\.svg$")
+    make_vert(font, "^((u[3][01f][0-9a-f]{2})-vert)\\.svg$")
+    make_ssXX(font, "^((u[3][01f][0-9a-f]{2})-([01][0-9]))\\.svg$")
     #make_salt(font, "^((u[34][0f][0-9a-f]{2})-var-([0-9]{3}))\\.svg$")
     #make_trad(font, "^((u[34][0f][0-9a-f]{2})-itaiji-([0-9]{3}))\\.svg$")
     #make_ccmp(font, "^((?:kumimoji-)?((u2ff[0-b])(-u[0-9a-f]{4,5})+))\\.svg$")
-    #make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
+    make_liga(font,"^(u319[269]-u3191)\\.svg$")
+    make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
+    make_vert(font, "^((u319[269]-u3191)-vert)\\.svg$")
+    make_half_h(font,"^(u319[1-9a-f](?:-u3191)?)\\.svg$")
+    make_half_v(font,"^(u319[0-9a-f](?:-u3191)?-vert)\\.svg$")
+    make_vkrn(font, "^(u319[0-9a-f](?:-u3191)?-vert)\\.svg$", "^((u300[12])-vert)\\.svg$", -512)
+    make_double(font, "^(u303[12])\\.svg$")
+    make_hankaku(font, "^(uff[6-9][0-9a-f])\\.svg$")
     make_variants(font, u"[㐀-㔀]", u"[㐀-㔀]",u".*?simplified.*?")
     make_aalt(font)
     fini_font(font,"HanaMinTest.ttf")
@@ -492,8 +588,16 @@ def make_font_a (version):
     make_trad(font,"^((u[2-9f][0-9a-f]{3})-itaiji-([0-9]{3}))\\.svg$")
     make_ccmp(font,"^((?:kumimoji-)?((u2ff[0-b])(-u[0-9a-f]{4,5})+))\\.svg$")
     make_liga(font,"^(u[0-9a-f]{4,5}-(u20dd|(u309[9a])))\\.svg$")
+    make_liga(font,"^(u319[269]-u3191)\\.svg$")
+    make_vert(font, "^((u319[269]-u3191)-vert)\\.svg$")
+    make_half_h(font,"^(u319[1-9a-f](?:-u3191)?)\\.svg$")
+    make_half_v(font,"^(u319[0-9a-f](?:-u3191)?-vert)\\.svg$")
     # aaltが２万を越えるとfontforgeが異常動作するため、当面はJIS異体字のみサポート。
     make_variants(font, u"[一-﫿]", u"[㐀-﫿𠀀-𯿽]",u".*?jisx.*?") # これだけならOK。
+    make_vkrn(font, "^(u3190-vert)\\.svg$", "^((u319[1-9a-f])(?:-u3191)?-vert)\\.svg$", -512)
+    make_vkrn(font, "^(u319[0-9a-f](?:-u3191)?-vert)\\.svg$", "^((u300[12])-vert)\\.svg$", -512)
+    make_hankaku(font, "^(uff[6-9][0-9a-f])\\.svg$")
+    make_double(font, "^(u303[12])\\.svg$")
     #make_variants(font, u"[一-﫿]", u"[一-﫿]",u".*?simplified.*?")
     #make_variants(font, u"[一-﫿]", u"[一-﫿]",u"[^,]+")
     #make_variants(font, u"[一-﫿]", u"[㐀-﫿𠀀-𯿽]",u"[^,]+")

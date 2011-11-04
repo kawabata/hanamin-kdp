@@ -1,5 +1,5 @@
 
-HanaMinKDP toolkit.
+HanaMin (KDP Experimental Version) toolkit.
 
 These files are to create HanaMin Experimental version
 (http://kanji-database.sourceforge.net/fonts/hanazono.html).
@@ -14,12 +14,14 @@ when `aalt' entries are too large (>15,000).
 
 
 
-About Fontforge `vmtx' table problem.
 
-To properly output `vmtx' (vertical matrix) table with fontforge,
+Fixing FontForge `vmtx' table problem.
+
+To properly output `vmtx' (vertical matrix) table with FontForge,
 please fix the following line at `ttfdumpmetrics' function of
 fontforge/tottf.c.  (As of 2011 version of FontForge.)
 
+-----
      if ( sc->parent->hasvmetrics ) {
  	if ( sc->ttf_glyph<=gi->lastvwidth )
  	    putshort(gi->vmtx,vwidth);
@@ -28,3 +30,4 @@ fontforge/tottf.c.  (As of 2011 version of FontForge.)
      }
      if ( sc->ttf_glyph==gi->lasthwidth )
  	gi->hfullcnt = sc->ttf_glyph+1;
+-----
