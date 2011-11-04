@@ -468,6 +468,7 @@ def make_double (font, reg):
             name   = m.group(1)
             glyph  = get_glyph(font, name)
             glyph.transform(mat4)
+            glyph.vwidth=2048
     print ("double: total=%d" % (count,))
 
 # 縦書きカーニングを入れる。
